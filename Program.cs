@@ -95,7 +95,9 @@ app.MapGet("/update_from_id",(int id,int quantity)=>{
     }
     DateTime localDate = DateTime.Now;
     if(UpdateDB($"UPDATE Items SET quantity = {quantity}, updated_at = '{localDate.ToString("yyyy-MM-dd HH:mm:ss")}' WHERE id = {id};")){
-
+        return JsonSerializer.Serialize(new Result{Code = 200, Message = "Success.\nData is updated."},jsonSerializerOptions);
+    }else{
+        return JsonSerializer.Serialize(new Result{Code = 500, Message = "Failed.\nData is not updated."},jsonSerializerOptions);
     }
 });
 
