@@ -32,6 +32,34 @@ static MySqlConnection ConnectDB(){
     return con;
 }
 
+//更新用の関数
+static bool UpdateDB(string SQLCommand){
+    var conn = ConnectDB();
+    MySqlTransaction trans = null;
+
+    string sqlCmd = SQLCommand;
+
+    // 編集クエリの開始
+    MySqlCommand cmd = new MySqlCommand(sqlCmd, conn);
+
+    try{
+        // トランザクション監視開始
+        trans = cmd.Connection.BeginTransaction(IsolationLevel.ReadCommitted);
+
+        // SQL実行
+        cmd.ExecuteNonQuery();
+
+        // DBをコミット
+        trans.Commit();
+    }
+    catch (MySqlException mse){
+        trans.Rollback();
+        return false;
+    }
+    return true;
+}
+
+//検索用の関数
 static Item[] SearchDB(string SQLCommand){
     var conn = ConnectDB();
     // データを取得するテーブル
@@ -59,6 +87,17 @@ static Item[] SearchDB(string SQLCommand){
 app.MapGet("/echo", () => {
     return "Hello World!";
 }).WithName("Echo").WithOpenApi();
+
+app.MapGet("/update_from_id",(int id,int quantity)=>{
+    // クエリパラメータの存在を確認し、存在しない場合はエラーメッセージを表示
+    if (id == null || quantity == null){
+        return JsonSerializer.Serialize(new Result{Code = 400, Message = "Query Parameter is not found.\nNeed id,quantity Query Parameter."});
+    }
+    DateTime localDate = DateTime.Now;
+    if(UpdateDB($"UPDATE Items SET quantity = {quantity}, updated_at = '{localDate.ToString("yyyy-MM-dd HH:mm:ss")}' WHERE id = {id};")){
+
+    }
+});
 
 app.MapGet("/search_from_name", (string name,int limit = 10) => {
     Item[] ret = null;
