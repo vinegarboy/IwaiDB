@@ -32,17 +32,13 @@ static MySqlConnection ConnectDB(){
     return con;
 }
 
-app.MapGet("/echo", () => {
-    return "Hello World!";
-}).WithName("Echo").WithOpenApi();
-
-app.MapGet("/GetAllList",()=>{
+static Item[] SearchDB(string SQLCommand){
     var conn = ConnectDB();
     // データを取得するテーブル
     DataTable tbl = new DataTable();
 
     // SQLを実行する
-    MySqlDataAdapter dataAdp = new MySqlDataAdapter("SELECT * FROM Items;", conn);
+    MySqlDataAdapter dataAdp = new MySqlDataAdapter(SQLCommand, conn);
     dataAdp.Fill(tbl);
 
     // DataTable を List<Item> に変換
@@ -57,7 +53,52 @@ app.MapGet("/GetAllList",()=>{
             UpdatedAt = DateTime.Parse(tbl.Rows[i]["updated_at"].ToString())
         };
     }
-    return JsonSerializer.Serialize(new Result{Code = 200,Message = JsonSerializer.Serialize(items,jsonSerializerOptions)},jsonSerializerOptions);
+    return items;
+}
+
+app.MapGet("/echo", () => {
+    return "Hello World!";
+}).WithName("Echo").WithOpenApi();
+
+app.MapGet("/search_from_name", (string name,int limit = 10) => {
+    Item[] ret = null;
+    try{
+        ret = SearchDB($"SELECT * FROM Items WHERE name LIKE '%{name}%' LIMIT {limit};");
+    }catch(Exception e){
+        return JsonSerializer.Serialize(new Result{Code = 500,Message = e.Message},jsonSerializerOptions);
+    }
+    if(ret == null){
+        return JsonSerializer.Serialize(new Result{Code = 404,Message = "Data is not found."},jsonSerializerOptions);
+    }
+    return JsonSerializer.Serialize(new Result{Code = 200,Message = JsonSerializer.Serialize(ret,jsonSerializerOptions)},jsonSerializerOptions);
+
+}).WithName("SearchFromName").WithOpenApi();
+
+
+app.MapGet("/search_from_tag",(string tag,int limit = 10)=>{
+    Item[] ret = null;
+    try{
+        ret = SearchDB($"SELECT * FROM Items WHERE tag LIKE '%{tag}%' LIMIT {limit};");
+    }catch(Exception e){
+        return JsonSerializer.Serialize(new Result{Code = 500,Message = e.Message},jsonSerializerOptions);
+    }
+    if(ret == null){
+        return JsonSerializer.Serialize(new Result{Code = 404,Message = "Data is not found."},jsonSerializerOptions);
+    }
+    return JsonSerializer.Serialize(new Result{Code = 200,Message = JsonSerializer.Serialize(ret,jsonSerializerOptions)},jsonSerializerOptions);
+}).WithName("SearchFromTag").WithOpenApi();
+
+app.MapGet("/get_all_list",()=>{
+        Item[] ret = null;
+    try{
+        ret = SearchDB($"SELECT * FROM Items;");
+    }catch(Exception e){
+        return JsonSerializer.Serialize(new Result{Code = 500,Message = e.Message},jsonSerializerOptions);
+    }
+    if(ret == null){
+        return JsonSerializer.Serialize(new Result{Code = 404,Message = "Data is not found."},jsonSerializerOptions);
+    }
+    return JsonSerializer.Serialize(new Result{Code = 200,Message = JsonSerializer.Serialize(ret,jsonSerializerOptions)},jsonSerializerOptions);
 }).WithName("GetList").WithOpenApi();
 
 app.MapGet("/add_data", (string name,string tags,int count) =>{
@@ -82,7 +123,7 @@ app.MapGet("/add_data", (string name,string tags,int count) =>{
     return JsonSerializer.Serialize(new Result{Code = 200, Message = "Success.\nData is added."},jsonSerializerOptions);
 }).WithName("AddData").WithOpenApi();
 
-app.MapGet("/delete_data", (int id) =>{
+app.MapGet("/delete_fromID", (int id) =>{
     // クエリパラメータの存在を確認し、存在しない場合はエラーメッセージを表示
     if (id == null){
         return JsonSerializer.Serialize(new Result{Code = 400, Message = "Query Parameter is not found.\nNeed id Query Parameter."});
@@ -120,7 +161,7 @@ app.MapGet("/delete_data", (int id) =>{
 
     return JsonSerializer.Serialize(new Result{Code = 200, Message = "Success.\nData is deleted."},jsonSerializerOptions);
 }
-).WithName("DeleteData").WithOpenApi();
+).WithName("DeleteDataFromID").WithOpenApi();
 
 app.Run();
 
