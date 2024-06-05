@@ -1,0 +1,6 @@
+@IwaiDB_HostAddress = http://localhost:5234
+
+GET {{IwaiDB_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
