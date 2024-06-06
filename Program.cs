@@ -49,7 +49,7 @@ class Program {
             var id = body.Id;
             var quantity = body.Quantity;
             // クエリパラメータの存在を確認し、存在しない場合はエラーメッセージを表示
-            if (id == null || quantity == null){
+            if (id == null || quantity < 0){
                 return JsonSerializer.Serialize(new Result{Code = 400, Message = "Query Parameter is not found.\nNeed id,quantity Query Parameter."});
             }
             DateTime localDate = DateTime.Now;
@@ -70,7 +70,7 @@ class Program {
             if(ret == null){
                 return JsonSerializer.Serialize(new Result{Code = 404,Message = "Data is not found."},jsonSerializerOptions);
             }
-            return JsonSerializer.Serialize(new Result{Code = 200,Message = JsonSerializer.Serialize(ret,jsonSerializerOptions).ToString()},jsonSerializerOptions);
+            return JsonSerializer.Serialize(new ResultData{Code = 200,Data=ret},jsonSerializerOptions);
 
         }).WithName("SearchFromName").WithOpenApi();
 
@@ -85,7 +85,7 @@ class Program {
             if(ret == null){
                 return JsonSerializer.Serialize(new Result{Code = 404,Message = "Data is not found."},jsonSerializerOptions);
             }
-            return JsonSerializer.Serialize(new Result{Code = 200,Message = JsonSerializer.Serialize(ret,jsonSerializerOptions).ToString()},jsonSerializerOptions);
+            return JsonSerializer.Serialize(new ResultData{Code = 200,Data=ret},jsonSerializerOptions);
         }).WithName("SearchFromTag").WithOpenApi();
 
         app.MapGet("/get_all_list",()=>{
@@ -98,7 +98,7 @@ class Program {
             if(ret == null){
                 return JsonSerializer.Serialize(new Result{Code = 404,Message = "Data is not found."},jsonSerializerOptions);
             }
-            return JsonSerializer.Serialize(new Result{Code = 200,Message = JsonSerializer.Serialize(ret,jsonSerializerOptions).ToString()},jsonSerializerOptions);
+            return JsonSerializer.Serialize(new ResultData{Code = 200,Data = ret},jsonSerializerOptions);
         }).WithName("GetList").WithOpenApi();
 
         app.MapPost("/add_data", (GetItemData body) =>{
@@ -111,6 +111,16 @@ class Program {
                 return JsonSerializer.Serialize(new Result { Code = 400, Message = "Missing or invalid query parameter(s)." });
             }
             var conn = ConnectDB();
+
+            // Check if the item name already exists
+            string checkExistenceSql = $"SELECT COUNT(*) FROM Items WHERE name = '{name}'";
+            using (var cmdCheck = new MySqlCommand(checkExistenceSql, conn)){
+                int count = Convert.ToInt32(cmdCheck.ExecuteScalar());
+                if (count > 0){
+                    return JsonSerializer.Serialize(new Result { Code = 409, Message = "Duplicate name.\nPlease choose another name." });
+                }
+            }
+
             MySqlTransaction trans = null;
             DateTime localDate = DateTime.Now;
             string sqlCmd = $"INSERT INTO Items (name, tag, quantity, created_at, updated_at) VALUES ('{name}', '{tags}', {quantity}, '{localDate.ToString("yyyy-MM-dd HH:mm:ss")}', '{localDate.ToString("yyyy-MM-dd HH:mm:ss")}');";
@@ -119,15 +129,51 @@ class Program {
                 trans = cmd.Connection.BeginTransaction(IsolationLevel.ReadCommitted);
                 cmd.ExecuteNonQuery();
                 trans.Commit();
+                return JsonSerializer.Serialize(new Result { Code = 200, Message = "Success.\nData is added." });
             }
             catch (MySqlException mse){
                 trans?.Rollback();
                 return JsonSerializer.Serialize(new Result { Code = Convert.ToInt32(mse.Number), Message = $"{mse.Message}\n{sqlCmd}" });
             }
-            return JsonSerializer.Serialize(new Result { Code = 200, Message = "Success.\nData is added." });
         }).WithName("AddData").WithOpenApi();
 
-        app.MapGet("/delete_fromID", (int id) =>{
+        app.MapPost("/delete_fromName",(string name)=>{
+            if(name == ""){
+                return JsonSerializer.Serialize(new Result{Code = 400, Message = "Query Parameter is not found.\nNeed name Query Parameter."});
+            }
+            var conn = ConnectDB();
+
+            string sqlCmd = $"DELETE FROM Items WHERE name = {name};";
+            MySqlTransaction trans = null;
+
+            // 削除クエリの開始
+            MySqlCommand cmd = new MySqlCommand(sqlCmd, conn);
+
+            try{
+                // 選択中のIDを用いて、ステークホルダーのセット
+                cmd.Parameters.AddWithValue("name", name);
+
+                // トランザクション監視開始
+                trans = cmd.Connection.BeginTransaction(IsolationLevel.ReadCommitted);
+
+                // SQL実行
+                cmd.ExecuteNonQuery();
+
+                // DBをコミット
+                trans.Commit();
+            }
+            catch (MySqlException mse){
+                trans.Rollback();                   // 例外発生時はロールバック
+                return JsonSerializer.Serialize(new Result{Code = Convert.ToInt32(mse.Code), Message = $"{mse.Message}\nDELETE FROM Items WHERE name = {name}"},jsonSerializerOptions);
+            }
+            finally{
+                // 接続はクローズする
+                cmd.Connection.Close();
+            }
+            return JsonSerializer.Serialize(new Result{Code = 200, Message = "Success.\nData is deleted."},jsonSerializerOptions);
+        }).WithName("DeleteDataFromName").WithOpenApi();
+
+        app.MapPost("/delete_fromID", (int id) =>{
             // クエリパラメータの存在を確認し、存在しない場合はエラーメッセージを表示
             if (id == null){
                 return JsonSerializer.Serialize(new Result{Code = 400, Message = "Query Parameter is not found.\nNeed id Query Parameter."});
@@ -307,6 +353,11 @@ class Program {
 class Result{
     public int Code {get;set;}
     public string Message {get;set;}
+}
+
+class ResultData{
+    public int Code {get;set;}
+    public Item[] Data {get;set;}
 }
 
 class GetItemData{
